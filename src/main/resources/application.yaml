@@ -1,0 +1,40 @@
+ktor:
+  application:
+    modules:
+      - com.sonusid.legit.ApplicationKt.module
+  deployment:
+    port: 8080
+    host: 0.0.0.0
+
+# ========================
+# JWT Configuration
+# ========================
+jwt:
+  secret: "legit-super-secret-key-change-this-in-production-minimum-256-bits"
+  issuer: "legit-platform"
+  audience: "legit-users"
+  realm: "legit"
+  expirationMs: "3600000"
+  refreshExpirationMs: "604800000"
+
+# ========================
+# MongoDB Configuration
+# ========================
+mongodb:
+  uri: "mongodb://localhost:27017"
+  database: "legit"
+
+# ========================
+# Legit Platform Configuration
+# ========================
+legit:
+  # AES-256-GCM encryption key for document vault
+  # CHANGE THIS IN PRODUCTION — must be a strong, unique secret
+  encryptionSecret: "legit-document-encryption-secret-change-in-production-64chars-min"
+
+  # Secret used for hashing disposable keys and generating proof hashes
+  # CHANGE THIS IN PRODUCTION — must be a strong, unique secret
+  pipelineSecret: "legit-pipeline-verification-secret-change-in-production"
+
+  # Time-to-live for disposable keys in milliseconds (default: 5 minutes)
+  disposableKeyTtlMs: "300000"

@@ -1,0 +1,54 @@
+<configuration>
+    <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
+
+    <!-- Console appender with colored output -->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) %cyan([%thread]) %magenta(%logger{36}) - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- File appender for persistent logs -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/legit.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/legit.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Legit application logging -->
+    <logger name="com.sonusid.legit" level="DEBUG"/>
+    <logger name="com.sonusid.legit.pipeline" level="DEBUG"/>
+    <logger name="com.sonusid.legit.services" level="DEBUG"/>
+    <logger name="com.sonusid.legit.gateway" level="INFO"/>
+    <logger name="com.sonusid.legit.db" level="INFO"/>
+
+    <!-- Ktor framework logging -->
+    <logger name="io.ktor" level="INFO"/>
+    <logger name="io.ktor.server.plugins.calllogging" level="INFO"/>
+    <logger name="io.ktor.auth" level="INFO"/>
+
+    <!-- Netty transport logging -->
+    <logger name="io.netty" level="WARN"/>
+    <logger name="org.eclipse.jetty" level="WARN"/>
+
+    <!-- MongoDB driver logging -->
+    <logger name="org.mongodb.driver" level="WARN"/>
+    <logger name="org.mongodb.driver.connection" level="WARN"/>
+    <logger name="org.mongodb.driver.cluster" level="INFO"/>
+
+    <!-- Status pages / error handling -->
+    <logger name="StatusPages" level="DEBUG"/>
+
+    <!-- Root logger -->
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>
