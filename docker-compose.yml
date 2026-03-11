@@ -1,0 +1,24 @@
+services:
+  mongo:
+    image: mongo:8
+    container_name: legit-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - legit-mongo-data:/data/db
+      - legit-mongo-config:/data/configdb
+    environment:
+      - MONGO_INITDB_DATABASE=legit
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  legit-mongo-data:
+    driver: local
+  legit-mongo-config:
+    driver: local
