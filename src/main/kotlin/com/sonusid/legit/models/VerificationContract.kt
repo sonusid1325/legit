@@ -16,61 +16,27 @@ import org.bson.types.ObjectId
 
 @Serializable
 enum class ContractStatus {
-    @SerialName("pending_approval")
     PENDING_APPROVAL,
-
-    @SerialName("approved")
     APPROVED,
-
-    @SerialName("rejected")
     REJECTED,
-
-    @SerialName("verification_in_progress")
     VERIFICATION_IN_PROGRESS,
-
-    @SerialName("verified")
     VERIFIED,
-
-    @SerialName("failed")
     FAILED,
-
-    @SerialName("expired")
     EXPIRED,
-
-    @SerialName("revoked")
     REVOKED
 }
 
 @Serializable
 enum class VerificationField {
-    @SerialName("full_name")
     FULL_NAME,
-
-    @SerialName("date_of_birth")
     DATE_OF_BIRTH,
-
-    @SerialName("address")
     ADDRESS,
-
-    @SerialName("gender")
     GENDER,
-
-    @SerialName("father_name")
     FATHER_NAME,
-
-    @SerialName("document_validity")
     DOCUMENT_VALIDITY,
-
-    @SerialName("document_number_match")
     DOCUMENT_NUMBER_MATCH,
-
-    @SerialName("identity_proof")
     IDENTITY_PROOF,
-
-    @SerialName("address_proof")
     ADDRESS_PROOF,
-
-    @SerialName("age_verification")
     AGE_VERIFICATION
 }
 
@@ -143,13 +109,8 @@ data class FieldVerificationResult(
 
 @Serializable
 enum class OverallVerificationStatus {
-    @SerialName("pass")
     PASS,
-
-    @SerialName("fail")
     FAIL,
-
-    @SerialName("partial")
     PARTIAL
 }
 

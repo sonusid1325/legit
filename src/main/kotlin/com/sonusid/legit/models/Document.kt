@@ -7,49 +7,23 @@ import org.bson.types.ObjectId
 
 @Serializable
 enum class DocumentType {
-    @SerialName("aadhaar_card")
     AADHAAR_CARD,
-
-    @SerialName("pan_card")
     PAN_CARD,
-
-    @SerialName("passport")
     PASSPORT,
-
-    @SerialName("driving_license")
     DRIVING_LICENSE,
-
-    @SerialName("voter_id")
     VOTER_ID,
-
-    @SerialName("bank_statement")
     BANK_STATEMENT,
-
-    @SerialName("address_proof")
     ADDRESS_PROOF,
-
-    @SerialName("income_proof")
     INCOME_PROOF,
-
-    @SerialName("education_certificate")
     EDUCATION_CERTIFICATE,
-
-    @SerialName("other")
     OTHER
 }
 
 @Serializable
 enum class DocumentStatus {
-    @SerialName("pending")
     PENDING,
-
-    @SerialName("verified")
     VERIFIED,
-
-    @SerialName("rejected")
     REJECTED,
-
-    @SerialName("expired")
     EXPIRED
 }
 

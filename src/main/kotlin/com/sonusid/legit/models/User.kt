@@ -23,13 +23,8 @@ data class User(
 
 @Serializable
 enum class UserRole {
-    @SerialName("user")
     USER,
-
-    @SerialName("admin")
     ADMIN,
-
-    @SerialName("service_provider")
     SERVICE_PROVIDER
 }
 
