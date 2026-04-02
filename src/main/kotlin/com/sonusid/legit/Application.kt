@@ -181,12 +181,17 @@ fun Application.configureCORS() {
 
         // Allow credentials (cookies/sessions)
         allowCredentials = true
+        allowNonSimpleContentTypes = true
 
-        // In development, allow all hosts. In production, restrict this!
-        allowHost("localhost:3000") // Frontend dev server
-        allowHost("localhost:8080") // API itself
-        allowHost("127.0.0.1:3000")
-        allowHost("127.0.0.1:8080")
+        // Development policy: reflect common local and tunnel origins.
+        allowOrigins { origin ->
+            origin.startsWith("http://localhost:") ||
+                origin.startsWith("https://localhost:") ||
+                origin.startsWith("http://127.0.0.1:") ||
+                origin.startsWith("https://127.0.0.1:") ||
+                origin.endsWith(".ngrok-free.app") ||
+                origin.endsWith(".ngrok.app")
+        }
 
         // Max age for preflight cache
         maxAgeInSeconds = 3600

@@ -121,3 +121,4 @@ object MongoDB {
 
     fun isInitialized(): Boolean = ::database.isInitialized
 }
+

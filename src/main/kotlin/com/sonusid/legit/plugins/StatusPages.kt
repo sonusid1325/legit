@@ -183,8 +183,11 @@ fun Application.configureStatusPages() {
             )
         }
 
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> refs/remotes/origin/main
         status(HttpStatusCode.MethodNotAllowed) { call, status ->
             call.respond(
                 status,
