@@ -92,6 +92,51 @@ fun Route.pipelineRoutes(pipelineService: DataPipelineService) {
         }
 
         // ========================
+        // POST /api/v1/pipeline/p2p-verify/{contractId}
+        // Direct peer-to-peer verification trigger
+        // Allows any authenticated user to trigger if they are the requester
+        // ========================
+        authenticate("auth-jwt", "auth-session", strategy = AuthenticationStrategy.FirstSuccessful) {
+            post("/p2p-verify/{contractId}") {
+                val contractId = call.parameters["contractId"]
+                val callerId = extractPipelineUserId(call) ?: return@post
+
+                if (contractId.isNullOrBlank()) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        ApiError(
+                            code = ErrorCodes.BAD_REQUEST,
+                            message = "Contract ID is required"
+                        )
+                    )
+                    return@post
+                }
+
+                val result = pipelineService.executeVerification(
+                    ExecuteVerificationRequest(
+                        contractId = contractId,
+                        disposableKey = "AUTO_P2P"
+                    )
+                )
+
+                result.fold(
+                    onSuccess = { verificationResponse ->
+                        call.respond(
+                            HttpStatusCode.OK,
+                            ApiResponse.success(
+                                verificationResponse,
+                                "Direct P2P Verification completed."
+                            )
+                        )
+                    },
+                    onFailure = { error ->
+                        handlePipelineError(call, error)
+                    }
+                )
+            }
+        }
+
+        // ========================
         // GET /api/v1/pipeline/contracts/requester
         // Service provider lists all their contracts
         // Requires SERVICE_PROVIDER or ADMIN role
@@ -221,7 +266,7 @@ fun Route.pipelineRoutes(pipelineService: DataPipelineService) {
             // ========================
             // POST /api/v1/pipeline/user/contracts/approve
             // User approves or rejects a verification contract
-            // On approval, a disposable key is generated and returned
+            // On approval, the verification runs immediately (Peer-to-Peer)
             // ========================
             post("/contracts/approve") {
                 val userId = extractPipelineUserId(call) ?: return@post
@@ -232,12 +277,12 @@ fun Route.pipelineRoutes(pipelineService: DataPipelineService) {
                 result.fold(
                     onSuccess = { response ->
                         when (response) {
-                            is DisposableKeyResponse -> {
+                            is VerificationResponse -> {
                                 call.respond(
                                     HttpStatusCode.OK,
                                     ApiResponse.success(
                                         response,
-                                        "Contract approved. Disposable key generated for service provider."
+                                        "Contract approved and verified successfully (Peer-to-Peer)"
                                     )
                                 )
                             }
@@ -250,7 +295,7 @@ fun Route.pipelineRoutes(pipelineService: DataPipelineService) {
                             else -> {
                                 call.respond(
                                     HttpStatusCode.OK,
-                                    ApiResponse.ok("Contract action completed")
+                                    ApiResponse.success(response, "Action completed successfully")
                                 )
                             }
                         }

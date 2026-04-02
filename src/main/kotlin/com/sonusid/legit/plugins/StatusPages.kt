@@ -183,26 +183,6 @@ fun Application.configureStatusPages() {
             )
         }
 
-        status(HttpStatusCode.Unauthorized) { call, status ->
-            call.respond(
-                status,
-                ApiError(
-                    code = ErrorCodes.UNAUTHORIZED,
-                    message = "Authentication is required to access this resource"
-                )
-            )
-        }
-
-        status(HttpStatusCode.Forbidden) { call, status ->
-            call.respond(
-                status,
-                ApiError(
-                    code = ErrorCodes.FORBIDDEN,
-                    message = "You do not have permission to access this resource"
-                )
-            )
-        }
-
         status(HttpStatusCode.MethodNotAllowed) { call, status ->
             call.respond(
                 status,

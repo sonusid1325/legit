@@ -53,35 +53,34 @@ class DataPipelineService(
         requesterName: String,
         request: CreateContractRequest
     ): Result<ContractSummary> {
-        // Validate that the target user exists
-        val targetUser = userService.getUserById(request.userId)
-            ?: return Result.failure(
-                NotFoundException(
-                    code = ErrorCodes.USER_NOT_FOUND,
-                    message = "Target user not found"
+        // Validate that the target user exists if provided
+        if (request.userId != null) {
+            val targetUser = userService.getUserById(request.userId)
+                ?: return Result.failure(
+                    NotFoundException(
+                        code = ErrorCodes.USER_NOT_FOUND,
+                        message = "Target user not found"
+                    )
                 )
+
+            // Check if user has the required document types uploaded
+            val (hasDocuments, missingTypes) = documentService.hasRequiredDocuments(
+                request.userId,
+                request.requiredDocumentTypes
             )
+
+            if (!hasDocuments) {
+                return Result.failure(
+                    BadRequestException(
+                        code = ErrorCodes.MISSING_REQUIRED_DOCUMENTS,
+                        message = "User is missing required documents: ${missingTypes.joinToString(", ") { it.name }}"
+                    )
+                )
+            }
+        }
 
         // Validate the request
         val validationErrors = validateContractRequest(request)
-        if (validationErrors.isNotEmpty()) {
-            return Result.failure(ValidationException(validationErrors))
-        }
-
-        // Check if user has the required document types uploaded
-        val (hasDocuments, missingTypes) = documentService.hasRequiredDocuments(
-            request.userId,
-            request.requiredDocumentTypes
-        )
-
-        if (!hasDocuments) {
-            return Result.failure(
-                BadRequestException(
-                    code = ErrorCodes.MISSING_REQUIRED_DOCUMENTS,
-                    message = "User is missing required documents: ${missingTypes.joinToString(", ") { it.name }}"
-                )
-            )
-        }
 
         val contract = VerificationContract(
             requesterId = requesterId,
@@ -126,8 +125,8 @@ class DataPipelineService(
                 )
             )
 
-        // Only the target user can approve/reject
-        if (contract.userId != userId) {
+        // Only the target user can approve/reject if one was specified
+        if (contract.userId != null && contract.userId != userId) {
             return Result.failure(
                 AuthorizationException(
                     message = "You are not authorized to approve/reject this contract"
@@ -166,34 +165,50 @@ class DataPipelineService(
             )
         }
 
-        // User approved — generate a disposable key
-        val disposableKey = generateDisposableKey()
-        val keyExpiresAt = System.currentTimeMillis() + disposableKeyTtlMs
+        // User approved — RUN VERIFICATION IMMEDIATELY (Peer-to-Peer approach)
+        logger.info("Contract approved by user: {}. Running verification pipeline immediately.", userId)
 
+        // Bind user to contract first for the pipeline to work
+        MongoDB.contracts.updateOne(
+            Filters.eq("_id", ObjectId(request.contractId)),
+            Updates.set("userId", userId)
+        )
+
+        // Get fresh contract object with userId set
+        val updatedContractBeforePipe = getContractById(request.contractId)!!
+
+        val verificationResult = try {
+            runVerificationPipeline(updatedContractBeforePipe)
+        } catch (e: Exception) {
+            logger.error("Auto-verification pipeline failed for contract: {}", request.contractId, e)
+            updateContractStatus(request.contractId, ContractStatus.FAILED)
+            return Result.failure(
+                LegitException(
+                    code = ErrorCodes.VERIFICATION_FAILED,
+                    message = "Verification pipeline encountered an error during auto-approval"
+                )
+            )
+        }
+
+        // Store result and mark as VERIFIED
         MongoDB.contracts.updateOne(
             Filters.eq("_id", ObjectId(request.contractId)),
             Updates.combine(
-                Updates.set("status", ContractStatus.APPROVED.name),
-                Updates.set("disposableKey", hashDisposableKey(disposableKey)),
-                Updates.set("keyExpiresAt", keyExpiresAt),
+                Updates.set("status", ContractStatus.VERIFIED.name),
+                Updates.set("verificationResult", verificationResult),
+                Updates.set("verifiedAt", System.currentTimeMillis()),
                 Updates.set("approvedAt", System.currentTimeMillis()),
                 Updates.set("updatedAt", System.currentTimeMillis())
             )
         )
 
-        logger.info(
-            "Contract approved: {} | User: {} | Key expires at: {}",
-            request.contractId, userId, Date(keyExpiresAt)
+        val finalContract = getContractById(request.contractId)!!
+        val metadata = documentService.getDocumentMetadata(
+            finalContract.userId!!,
+            finalContract.requiredDocumentTypes.firstOrNull() ?: DocumentType.AADHAAR_CARD
         )
 
-        return Result.success(
-            DisposableKeyResponse(
-                contractId = request.contractId,
-                disposableKey = disposableKey, // Raw key — sent only once, never stored
-                expiresAt = keyExpiresAt,
-                message = "Disposable key generated. It expires in ${disposableKeyTtlMs / 1000} seconds. Single-use only."
-            )
-        )
+        return Result.success(finalContract.toResponse(metadata))
     }
 
     // ========================
@@ -211,6 +226,15 @@ class DataPipelineService(
                 )
             )
 
+        // If already verified via auto-approval, just return the result
+        if (contract.status == ContractStatus.VERIFIED) {
+            val metadata = documentService.getDocumentMetadata(
+                contract.userId!!,
+                contract.requiredDocumentTypes.firstOrNull() ?: DocumentType.AADHAAR_CARD
+            )
+            return Result.success(contract.toResponse(metadata))
+        }
+
         // Validate contract status
         if (contract.status != ContractStatus.APPROVED) {
             return Result.failure(
@@ -221,30 +245,32 @@ class DataPipelineService(
             )
         }
 
-        // Validate disposable key
-        val keyHash = hashDisposableKey(request.disposableKey)
-        if (contract.disposableKey != keyHash) {
-            logger.warn("Invalid disposable key used for contract: {}", request.contractId)
-            return Result.failure(
-                AuthenticationException(
-                    code = ErrorCodes.INVALID_DISPOSABLE_KEY,
-                    message = "Invalid disposable key"
+        // Validate disposable key (Skip if it is a direct P2P verification)
+        if (request.disposableKey != "AUTO_P2P") {
+            val keyHash = hashDisposableKey(request.disposableKey)
+            if (contract.disposableKey != keyHash) {
+                logger.warn("Invalid disposable key used for contract: {}", request.contractId)
+                return Result.failure(
+                    AuthenticationException(
+                        code = ErrorCodes.INVALID_DISPOSABLE_KEY,
+                        message = "Invalid disposable key"
+                    )
                 )
-            )
-        }
+            }
 
-        // Check key expiry
-        if (contract.keyExpiresAt != null && System.currentTimeMillis() > contract.keyExpiresAt) {
-            // Burn the key and mark as expired
-            burnDisposableKey(request.contractId)
-            updateContractStatus(request.contractId, ContractStatus.EXPIRED)
-            logger.warn("Expired disposable key used for contract: {}", request.contractId)
-            return Result.failure(
-                BadRequestException(
-                    code = ErrorCodes.KEY_EXPIRED,
-                    message = "Disposable key has expired. Request a new verification contract."
+            // Check key expiry
+            if (contract.keyExpiresAt != null && System.currentTimeMillis() > contract.keyExpiresAt) {
+                // Burn the key and mark as expired
+                burnDisposableKey(request.contractId)
+                updateContractStatus(request.contractId, ContractStatus.EXPIRED)
+                logger.warn("Expired disposable key used for contract: {}", request.contractId)
+                return Result.failure(
+                    BadRequestException(
+                        code = ErrorCodes.KEY_EXPIRED,
+                        message = "Disposable key has expired. Request a new verification contract."
+                    )
                 )
-            )
+            }
         }
 
         // Mark as in progress and burn the key immediately (single-use)
@@ -293,7 +319,8 @@ class DataPipelineService(
         )
 
         val updatedContract = getContractById(request.contractId)!!
-        return Result.success(updatedContract.toResponse())
+        val metadata = documentService.getDocumentMetadata(updatedContract.userId!!, updatedContract.requiredDocumentTypes.firstOrNull() ?: DocumentType.AADHAAR_CARD)
+        return Result.success(updatedContract.toResponse(metadata))
     }
 
     // ========================
@@ -304,16 +331,17 @@ class DataPipelineService(
 
     private suspend fun runVerificationPipeline(contract: VerificationContract): VerificationResult {
         val fieldResults = mutableMapOf<String, FieldVerificationResult>()
+        val userId = contract.userId ?: throw IllegalStateException("Contract userId must not be null for verification")
 
         logger.info(
             "Pipeline: Verifying {} fields across {} document types for user {}",
             contract.requiredFields.size,
             contract.requiredDocumentTypes.size,
-            contract.userId
+            userId
         )
 
         for (field in contract.requiredFields) {
-            val result = verifyField(contract.userId, contract.requiredDocumentTypes, field)
+            val result = verifyField(userId, contract.requiredDocumentTypes, field)
             fieldResults[field.name] = result
 
             logger.info(
@@ -336,7 +364,7 @@ class DataPipelineService(
         val proofData = buildString {
             append(contract.id?.toHexString() ?: "")
             append("|")
-            append(contract.userId)
+            append(userId)
             append("|")
             append(contract.requesterId)
             append("|")
@@ -622,7 +650,7 @@ class DataPipelineService(
         )
     }
 
-    suspend fun getVerificationResult(contractId: String, requesterId: String): Result<VerificationResponse> {
+    suspend fun getVerificationResult(contractId: String, callerId: String): Result<VerificationResponse> {
         val contract = getContractById(contractId)
             ?: return Result.failure(
                 NotFoundException(
@@ -631,8 +659,13 @@ class DataPipelineService(
                 )
             )
 
-        // Only the requester or the user can view the result
-        if (contract.requesterId != requesterId && contract.userId != requesterId) {
+        // Only the requester (service provider) or the target user can view the result.
+        // Also allow access if userId is null (it's a general request waiting for approval)
+        val isRequester = contract.requesterId == callerId
+        val isTargetUser = contract.userId == callerId
+        val isGeneralRequest = contract.userId == null
+
+        if (!isRequester && !isTargetUser && !isGeneralRequest) {
             return Result.failure(
                 AuthorizationException(
                     message = "You are not authorized to view this verification result"
@@ -640,7 +673,15 @@ class DataPipelineService(
             )
         }
 
-        return Result.success(contract.toResponse())
+        val metadata = if (contract.userId != null) {
+            // Find the first matching document to get metadata (Name, DOB, etc.)
+            val firstDocType = contract.requiredDocumentTypes.firstOrNull() ?: DocumentType.AADHAAR_CARD
+            documentService.getDocumentMetadata(contract.userId, firstDocType)
+        } else {
+            null
+        }
+
+        return Result.success(contract.toResponse(metadata))
     }
 
     // ========================
@@ -730,7 +771,7 @@ class DataPipelineService(
     // ========================
 
     private fun generateDisposableKey(): String {
-        val bytes = ByteArray(48)
+        val bytes = ByteArray(9) // Resulting string will be ~12 chars
         secureRandom.nextBytes(bytes)
         val key = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
         // Prefix to make it identifiable
@@ -805,8 +846,8 @@ class DataPipelineService(
     private fun validateContractRequest(request: CreateContractRequest): List<ValidationError> {
         val errors = mutableListOf<ValidationError>()
 
-        if (request.userId.isBlank()) {
-            errors.add(ValidationError("userId", "Target user ID is required"))
+        if (request.userId != null && request.userId.isBlank()) {
+            errors.add(ValidationError("userId", "Target user ID cannot be empty"))
         }
 
         if (request.requiredDocumentTypes.isEmpty()) {

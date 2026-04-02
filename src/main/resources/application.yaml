@@ -36,5 +36,5 @@ legit:
   # CHANGE THIS IN PRODUCTION — must be a strong, unique secret
   pipelineSecret: "legit-pipeline-verification-secret-change-in-production"
 
-  # Time-to-live for disposable keys in milliseconds (default: 5 minutes)
-  disposableKeyTtlMs: "300000"
+  # Time-to-live for disposable keys in milliseconds (default: 15 minutes)
+  disposableKeyTtlMs: "900000"

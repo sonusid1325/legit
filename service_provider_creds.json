@@ -1,0 +1,8 @@
+{
+  "email": "service-provider@legit.io",
+  "password": "Legit@1234",
+  "username": "legit_service_provider",
+  "fullName": "Legit Official Service Provider",
+  "role": "SERVICE_PROVIDER",
+  "description": "Use these credentials to log in as a Service Provider in the Legit platform. Note: If the server does not have this user seeded, you may need to manually update the user's role to SERVICE_PROVIDER in the MongoDB 'users' collection after registration."
+}

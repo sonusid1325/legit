@@ -50,8 +50,8 @@ data class VerificationContract(
     val requesterId: String,
     val requesterName: String,
 
-    /** The user whose documents are being verified */
-    val userId: String,
+    /** The user whose documents are being verified — nullable for general QRs */
+    val userId: String? = null,
 
     /** What documents are needed for this verification */
     val requiredDocumentTypes: List<DocumentType>,
@@ -121,7 +121,7 @@ enum class OverallVerificationStatus {
 /** Service provider sends this to request verification of a user */
 @Serializable
 data class CreateContractRequest(
-    val userId: String,
+    val userId: String? = null,
     val requiredDocumentTypes: List<DocumentType>,
     val requiredFields: List<VerificationField>,
     val purpose: String
@@ -146,12 +146,16 @@ data class ExecuteVerificationRequest(
 data class VerificationResponse(
     val contractId: String,
     val requesterName: String,
-    val userId: String,
+    val userId: String?,
     val purpose: String,
+    val requiredDocumentTypes: List<DocumentType>,
+    val requiredFields: List<VerificationField>,
     val status: ContractStatus,
     val result: VerificationResult?,
     val createdAt: Long,
-    val verifiedAt: Long?
+    val verifiedAt: Long?,
+    val expiresAt: Long? = null,
+    val metadata: DocumentMetadata? = null
 )
 
 /** What the user sees — their pending/past contracts */
@@ -187,15 +191,19 @@ data class DisposableKeyResponse(
 // CONVERSION HELPERS
 // ========================
 
-fun VerificationContract.toResponse(): VerificationResponse = VerificationResponse(
+fun VerificationContract.toResponse(metadata: DocumentMetadata? = null): VerificationResponse = VerificationResponse(
     contractId = id?.toHexString() ?: "",
     requesterName = requesterName,
     userId = userId,
     purpose = purpose,
+    requiredDocumentTypes = requiredDocumentTypes,
+    requiredFields = requiredFields,
     status = status,
     result = verificationResult,
     createdAt = createdAt,
-    verifiedAt = verifiedAt
+    verifiedAt = verifiedAt,
+    expiresAt = expiresAt,
+    metadata = metadata
 )
 
 fun VerificationContract.toSummary(): ContractSummary = ContractSummary(
