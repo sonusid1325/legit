@@ -7,6 +7,7 @@ import com.mongodb.client.model.Updates
 import com.sonusid.legit.db.MongoDB
 import com.sonusid.legit.models.*
 import com.sonusid.legit.services.DocumentService
+import com.sonusid.legit.services.FirebaseService
 import com.sonusid.legit.services.UserService
 import kotlinx.coroutines.flow.toList
 import org.bson.types.ObjectId
@@ -53,19 +54,43 @@ class DataPipelineService(
         requesterName: String,
         request: CreateContractRequest
     ): Result<ContractSummary> {
-        // Validate that the target user exists if provided
+        println("DEBUG: Entering createContract. Requester: $requesterName, Target: ${request.userId}")
+        // Resolve target user if provided
+        var targetUserId = request.userId
         if (request.userId != null) {
-            val targetUser = userService.getUserById(request.userId)
-                ?: return Result.failure(
+            val identifier = request.userId.lowercase().trim()
+            logger.info("Resolving user for contract creation. Identifier: {}", identifier)
+            
+            // Try resolving by legitId first (username.suffix@legit)
+            val userByLegitId = if (identifier.contains("@legit")) {
+                userService.getUserByLegitId(identifier)
+            } else null
+
+            if (userByLegitId != null) {
+                logger.info("User found by Legit ID: {} -> Internal ID: {}", identifier, userByLegitId.id)
+            }
+
+            // Fallback to internal ID if not a legitId or not found
+            val targetUser = userByLegitId ?: if (!identifier.contains("@legit")) {
+                userService.getUserById(identifier)
+            } else null
+
+            if (targetUser == null) {
+                logger.warn("User resolution failed for identifier: {}", identifier)
+                return Result.failure(
                     NotFoundException(
                         code = ErrorCodes.USER_NOT_FOUND,
-                        message = "Target user not found"
+                        message = "Target user not found with identifier: ${request.userId}"
                     )
                 )
+            }
+
+            targetUserId = targetUser.id?.toHexString() ?: request.userId
+            logger.info("Final target user ID: {}", targetUserId)
 
             // Check if user has the required document types uploaded
             val (hasDocuments, missingTypes) = documentService.hasRequiredDocuments(
-                request.userId,
+                targetUserId,
                 request.requiredDocumentTypes
             )
 
@@ -85,7 +110,7 @@ class DataPipelineService(
         val contract = VerificationContract(
             requesterId = requesterId,
             requesterName = requesterName,
-            userId = request.userId,
+            userId = targetUserId,
             requiredDocumentTypes = request.requiredDocumentTypes,
             requiredFields = request.requiredFields,
             purpose = request.purpose.trim(),
@@ -104,11 +129,50 @@ class DataPipelineService(
 
         logger.info(
             "Contract created: {} | Requester: {} | User: {} | Purpose: {}",
-            contractId, requesterName, request.userId, request.purpose
+            contractId, requesterName, targetUserId, request.purpose
         )
 
         val savedContract = getContractById(contractId)!!
-        return Result.success(savedContract.toSummary())
+        val resolvedLegitId = if (request.userId != null && request.userId.contains("@legit")) {
+            request.userId
+        } else {
+            getLegitId(targetUserId)
+        }
+        
+        // ========================
+        // PUSH NOTIFICATION
+        // Notify the target user if they have an FCM token
+        // ========================
+        if (targetUserId != null) {
+            val userForNotify = userService.getUserById(targetUserId)
+            if (userForNotify != null) {
+                val fcmToken = userForNotify.fcmToken
+                if (!fcmToken.isNullOrBlank()) {
+                    logger.info("New Contract Created: {}. Sending push notification to user {} (@{})", 
+                        contractId, targetUserId, userForNotify.username)
+                    FirebaseService.sendPushNotification(
+                        token = fcmToken,
+                        title = "New Verification Request",
+                        body = "$requesterName is requesting document verification for: ${request.purpose}",
+                        data = mapOf(
+                            "type" to "NEW_CONTRACT",
+                            "contractId" to contractId,
+                            "requesterName" to requesterName,
+                            "purpose" to request.purpose
+                        )
+                    )
+                } else {
+                    logger.warn("Contract created for user {} (@{}), but NO FCM token found. User won't be notified.", 
+                        targetUserId, userForNotify.username)
+                }
+            } else {
+                logger.error("Target user {} not found during notification phase. This should not happen.", targetUserId)
+            }
+        } else {
+            logger.info("General contract created (no specific target user). Skipping push notification.")
+        }
+        
+        return Result.success(savedContract.toSummary(resolvedLegitId))
     }
 
     // ========================
@@ -208,7 +272,7 @@ class DataPipelineService(
             finalContract.requiredDocumentTypes.firstOrNull() ?: DocumentType.AADHAAR_CARD
         )
 
-        return Result.success(finalContract.toResponse(metadata))
+        return Result.success(finalContract.toResponse(metadata, getLegitId(finalContract.userId)))
     }
 
     // ========================
@@ -277,7 +341,7 @@ class DataPipelineService(
         MongoDB.contracts.updateOne(
             Filters.eq("_id", ObjectId(request.contractId)),
             Updates.combine(
-                Updates.set("status", ContractStatus.VERIFICATION_IN_PROGRESS.name),
+                Updates.set("status", ContractStatus.VERIFICATION_IN_PROGRESS),
                 Updates.set("disposableKey", null),
                 Updates.set("updatedAt", System.currentTimeMillis())
             )
@@ -320,7 +384,7 @@ class DataPipelineService(
 
         val updatedContract = getContractById(request.contractId)!!
         val metadata = documentService.getDocumentMetadata(updatedContract.userId!!, updatedContract.requiredDocumentTypes.firstOrNull() ?: DocumentType.AADHAAR_CARD)
-        return Result.success(updatedContract.toResponse(metadata))
+        return Result.success(updatedContract.toResponse(metadata, getLegitId(updatedContract.userId)))
     }
 
     // ========================
@@ -628,7 +692,7 @@ class DataPipelineService(
 
         val contracts = MongoDB.contracts.find(filter).toList()
         return ContractListResponse(
-            contracts = contracts.map { it.toSummary() },
+            contracts = contracts.map { it.toSummary(getLegitId(it.userId)) },
             total = contracts.size
         )
     }
@@ -645,7 +709,7 @@ class DataPipelineService(
 
         val contracts = MongoDB.contracts.find(filter).toList()
         return ContractListResponse(
-            contracts = contracts.map { it.toSummary() },
+            contracts = contracts.map { it.toSummary(getLegitId(it.userId)) },
             total = contracts.size
         )
     }
@@ -681,7 +745,7 @@ class DataPipelineService(
             null
         }
 
-        return Result.success(contract.toResponse(metadata))
+        return Result.success(contract.toResponse(metadata, getLegitId(contract.userId)))
     }
 
     // ========================
@@ -727,22 +791,34 @@ class DataPipelineService(
     // Should be called periodically
     // ========================
 
-    suspend fun cleanupExpiredContracts(): Int {
+    suspend fun cleanupExpiredContracts(force: Boolean = false): Int {
         val now = System.currentTimeMillis()
 
-        val expiredPending = MongoDB.contracts.find(
-            Filters.and(
-                Filters.eq("status", ContractStatus.PENDING_APPROVAL.name),
-                Filters.lt("expiresAt", now)
-            )
-        ).toList()
+        val expiredPending = if (force) {
+            MongoDB.contracts.find(
+                Filters.eq("status", ContractStatus.PENDING_APPROVAL)
+            ).toList()
+        } else {
+            MongoDB.contracts.find(
+                Filters.and(
+                    Filters.eq("status", ContractStatus.PENDING_APPROVAL),
+                    Filters.lt("expiresAt", now)
+                )
+            ).toList()
+        }
 
-        val expiredApproved = MongoDB.contracts.find(
-            Filters.and(
-                Filters.eq("status", ContractStatus.APPROVED.name),
-                Filters.lt("keyExpiresAt", now)
-            )
-        ).toList()
+        val expiredApproved = if (force) {
+            MongoDB.contracts.find(
+                Filters.eq("status", ContractStatus.APPROVED)
+            ).toList()
+        } else {
+            MongoDB.contracts.find(
+                Filters.and(
+                    Filters.eq("status", ContractStatus.APPROVED),
+                    Filters.lt("keyExpiresAt", now)
+                )
+            ).toList()
+        }
 
         var count = 0
 
@@ -797,10 +873,15 @@ class DataPipelineService(
         MongoDB.contracts.updateOne(
             Filters.eq("_id", ObjectId(contractId)),
             Updates.combine(
-                Updates.set("status", status.name),
+                Updates.set("status", status),
                 Updates.set("updatedAt", System.currentTimeMillis())
             )
         )
+    }
+
+    private suspend fun getLegitId(userId: String?): String? {
+        if (userId == null) return null
+        return userService.getUserById(userId)?.toProfileResponse()?.legitId
     }
 
     private fun generateVerificationToken(

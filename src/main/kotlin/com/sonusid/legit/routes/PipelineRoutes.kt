@@ -48,6 +48,8 @@ fun Route.pipelineRoutes(pipelineService: DataPipelineService) {
                 val requesterName = principal.getUsername()
 
                 val request = call.receive<CreateContractRequest>()
+                println("DEBUG: Creating contract for requester $requesterName, target user: ${request.userId}")
+                
                 val result = pipelineService.createContract(requesterId, requesterName, request)
 
                 result.fold(
@@ -58,6 +60,7 @@ fun Route.pipelineRoutes(pipelineService: DataPipelineService) {
                         )
                     },
                     onFailure = { error ->
+                        println("DEBUG: createContract failed with error: ${error.message}")
                         handlePipelineError(call, error)
                     }
                 )
@@ -409,7 +412,8 @@ fun Route.pipelineRoutes(pipelineService: DataPipelineService) {
             // Manually trigger cleanup of expired contracts and burned keys
             // ========================
             post("/cleanup") {
-                val cleanedCount = pipelineService.cleanupExpiredContracts()
+                val force = call.request.queryParameters["force"]?.toBoolean() ?: false
+                val cleanedCount = pipelineService.cleanupExpiredContracts(force)
 
                 call.respond(
                     HttpStatusCode.OK,
@@ -418,7 +422,7 @@ fun Route.pipelineRoutes(pipelineService: DataPipelineService) {
                             expiredContractsCleaned = cleanedCount,
                             cleanedAt = System.currentTimeMillis()
                         ),
-                        "Cleanup completed. $cleanedCount expired contracts processed."
+                        "Cleanup completed. $cleanedCount contracts processed."
                     )
                 )
             }

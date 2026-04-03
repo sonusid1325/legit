@@ -50,6 +50,7 @@ fun Route.authRoutes(userService: UserService) {
                     val session = userService.createSession(
                         userId = authResponse.userId,
                         username = authResponse.username,
+                        legitId = authResponse.legitId,
                         role = authResponse.role
                     )
                     call.sessions.set(session)
@@ -108,6 +109,7 @@ fun Route.authRoutes(userService: UserService) {
                     val session = userService.createSession(
                         userId = authResponse.userId,
                         username = authResponse.username,
+                        legitId = authResponse.legitId,
                         role = authResponse.role
                     )
                     call.sessions.set(session)
@@ -336,6 +338,33 @@ fun Route.authRoutes(userService: UserService) {
                                 )
                             }
                         }
+                    }
+                )
+            }
+
+            // ========================
+            // POST /api/v1/user/fcm-token
+            // Update current user's FCM token
+            // ========================
+            post("/fcm-token") {
+                val userId = extractUserId(call) ?: return@post
+                val request = call.receive<RegisterFcmTokenRequest>()
+                
+                userService.updateFcmToken(userId, request.fcmToken).fold(
+                    onSuccess = {
+                        call.respond(
+                            HttpStatusCode.OK,
+                            ApiResponse.ok("FCM token updated successfully")
+                        )
+                    },
+                    onFailure = { error ->
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            ApiError(
+                                code = ErrorCodes.INTERNAL_ERROR,
+                                message = error.message ?: "Failed to update FCM token"
+                            )
+                        )
                     }
                 )
             }

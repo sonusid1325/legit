@@ -9,6 +9,7 @@ import com.sonusid.legit.db.MongoDB
 import com.sonusid.legit.models.*
 import kotlinx.coroutines.flow.firstOrNull
 import org.bson.types.ObjectId
+import org.slf4j.LoggerFactory
 import java.security.SecureRandom
 import java.util.*
 
@@ -20,6 +21,7 @@ class UserService(
     private val refreshExpirationMs: Long = 604800000 // 7 days
 ) {
 
+    private val logger = LoggerFactory.getLogger(UserService::class.java)
     private val secureRandom = SecureRandom()
 
     // ========================
@@ -27,36 +29,28 @@ class UserService(
     // ========================
 
     suspend fun register(request: RegisterRequest): Result<AuthResponse> {
-        // Validate input
         val validationErrors = validateRegistration(request)
         if (validationErrors.isNotEmpty()) {
             return Result.failure(ValidationException(validationErrors))
         }
 
-        // Check if email already exists
-        val existingByEmail = MongoDB.users.find(
-            Filters.eq("email", request.email.lowercase().trim())
-        ).firstOrNull()
+        val normalizedEmail = request.email.lowercase().trim()
+        val normalizedUsername = request.username.lowercase().trim()
 
-        if (existingByEmail != null) {
+        if (getUserByEmail(normalizedEmail) != null) {
             return Result.failure(
                 ConflictException(
                     code = ErrorCodes.EMAIL_ALREADY_TAKEN,
-                    message = "An account with this email already exists"
+                    message = "Email is already registered"
                 )
             )
         }
 
-        // Check if username already exists
-        val existingByUsername = MongoDB.users.find(
-            Filters.eq("username", request.username.lowercase().trim())
-        ).firstOrNull()
-
-        if (existingByUsername != null) {
+        if (getUserByUsername(normalizedUsername) != null) {
             return Result.failure(
                 ConflictException(
                     code = ErrorCodes.USER_ALREADY_EXISTS,
-                    message = "This username is already taken"
+                    message = "Username is already taken"
                 )
             )
         }
@@ -65,9 +59,12 @@ class UserService(
         val passwordHash = hashPassword(request.password)
 
         // Create user
+        val username = normalizedUsername
+        val suffix = generateRandomSuffix(4)
         val user = User(
-            username = request.username.lowercase().trim(),
-            email = request.email.lowercase().trim(),
+            username = username,
+            legitId = "$username.$suffix@legit",
+            email = normalizedEmail,
             passwordHash = passwordHash,
             fullName = request.fullName.trim(),
             phoneNumber = request.phoneNumber?.trim(),
@@ -84,8 +81,20 @@ class UserService(
                 )
             )
 
+        // Auto-repair legacy accounts: Persist legitId if missing
+        val finalLegitId = if (user.legitId.isBlank()) {
+            val generated = "${user.username}.legacy@legit"
+            MongoDB.users.updateOne(
+                Filters.eq("_id", user.id),
+                Updates.set("legitId", generated)
+            )
+            generated
+        } else {
+            user.legitId
+        }
+
         // Generate tokens
-        val token = generateAccessToken(userId, user.username, user.role)
+        val token = generateAccessToken(userId, user.username, finalLegitId, user.role)
         val refreshToken = generateRefreshToken(userId)
 
         return Result.success(
@@ -94,10 +103,18 @@ class UserService(
                 refreshToken = refreshToken,
                 userId = userId,
                 username = user.username,
+                legitId = finalLegitId,
                 role = user.role,
                 expiresIn = jwtExpirationMs / 1000
             )
         )
+    }
+
+    private fun generateRandomSuffix(length: Int): String {
+        val chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+        return (1..length)
+            .map { chars.random() }
+            .joinToString("")
     }
 
     // ========================
@@ -143,8 +160,20 @@ class UserService(
                 )
             )
 
+        // Auto-repair legacy accounts: Persist legitId if missing
+        val finalLegitId = if (user.legitId.isBlank()) {
+            val generated = "${user.username}.legacy@legit"
+            MongoDB.users.updateOne(
+                Filters.eq("_id", user.id),
+                Updates.set("legitId", generated)
+            )
+            generated
+        } else {
+            user.legitId
+        }
+
         // Generate tokens
-        val token = generateAccessToken(userId, user.username, user.role)
+        val token = generateAccessToken(userId, user.username, finalLegitId, user.role)
         val refreshToken = generateRefreshToken(userId)
 
         return Result.success(
@@ -153,6 +182,7 @@ class UserService(
                 refreshToken = refreshToken,
                 userId = userId,
                 username = user.username,
+                legitId = finalLegitId,
                 role = user.role,
                 expiresIn = jwtExpirationMs / 1000
             )
@@ -197,7 +227,7 @@ class UserService(
 
         val userIdStr = user.id?.toHexString() ?: userId
 
-        val newAccessToken = generateAccessToken(userIdStr, user.username, user.role)
+        val newAccessToken = generateAccessToken(userIdStr, user.username, user.legitId, user.role)
         val newRefreshToken = generateRefreshToken(userIdStr)
 
         return Result.success(
@@ -206,6 +236,7 @@ class UserService(
                 refreshToken = newRefreshToken,
                 userId = userIdStr,
                 username = user.username,
+                legitId = if (user.legitId.isBlank()) "${user.username}.legacy@legit" else user.legitId,
                 role = user.role,
                 expiresIn = jwtExpirationMs / 1000
             )
@@ -236,6 +267,49 @@ class UserService(
         return MongoDB.users.find(
             Filters.eq("username", username.lowercase().trim())
         ).firstOrNull()
+    }
+
+    suspend fun getUserByLegitId(legitId: String): User? {
+        val identifier = legitId.lowercase().trim()
+        logger.info("getUserByLegitId: Searching for identifier: {}", identifier)
+        
+        // 1. Try finding by the actual legitId field first (exact match)
+        val user = MongoDB.users.find(
+            Filters.eq("legitId", identifier)
+        ).firstOrNull()
+        
+        if (user != null) {
+            logger.info("getUserByLegitId: Found exact match for {}", identifier)
+            return user
+        }
+        
+        // 2. If not found and it ends with @legit, try extracting username
+        if (identifier.endsWith("@legit")) {
+            // Remove @legit
+            val prefix = identifier.removeSuffix("@legit")
+            logger.info("getUserByLegitId: Prefix extracted: {}", prefix)
+            
+            // Try 1: The whole prefix is the username (e.g. "john.doe@legit")
+            val user1 = getUserByUsername(prefix)
+            if (user1 != null) {
+                logger.info("getUserByLegitId: Found user by prefix as username: {}", prefix)
+                return user1
+            }
+            
+            // Try 2: Prefix contains a suffix (e.g. "frutus.x92b@legit" or "john.doe.legacy@legit")
+            if (prefix.contains(".")) {
+                val username = prefix.substringBeforeLast(".")
+                logger.info("getUserByLegitId: Extracted username from dotted prefix: {}", username)
+                val user2 = getUserByUsername(username)
+                if (user2 != null) {
+                    logger.info("getUserByLegitId: Found user by extracted username: {}", username)
+                    return user2
+                }
+            }
+        }
+        
+        logger.warn("getUserByLegitId: No user found for identifier: {}", identifier)
+        return null
     }
 
     suspend fun getUserProfile(userId: String): Result<UserProfileResponse> {
@@ -282,6 +356,32 @@ class UserService(
         return Result.success(updatedUser.toProfileResponse())
     }
 
+    suspend fun updateFcmToken(userId: String, token: String): Result<Unit> {
+        try {
+            val result = MongoDB.users.updateOne(
+                Filters.eq("_id", ObjectId(userId)),
+                Updates.combine(
+                    Updates.set("fcmToken", token),
+                    Updates.set("updatedAt", System.currentTimeMillis())
+                )
+            )
+            
+            if (result.matchedCount == 0L) {
+                return Result.failure(
+                    NotFoundException(
+                        code = ErrorCodes.USER_NOT_FOUND,
+                        message = "User not found"
+                    )
+                )
+            }
+            
+            return Result.success(Unit)
+        } catch (e: Exception) {
+            logger.error("Failed to update FCM token for user $userId", e)
+            return Result.failure(e)
+        }
+    }
+
     suspend fun changePassword(
         userId: String,
         currentPassword: String,
@@ -326,11 +426,12 @@ class UserService(
     // SESSION MANAGEMENT
     // ========================
 
-    fun createSession(userId: String, username: String, role: UserRole): UserSession {
+    fun createSession(userId: String, username: String, legitId: String, role: UserRole): UserSession {
         val sessionId = generateSessionId()
         return UserSession(
             userId = userId,
             username = username,
+            legitId = legitId,
             role = role,
             sessionId = sessionId
         )
@@ -346,12 +447,13 @@ class UserService(
     // JWT TOKEN GENERATION
     // ========================
 
-    private fun generateAccessToken(userId: String, username: String, role: UserRole): String {
+    private fun generateAccessToken(userId: String, username: String, legitId: String, role: UserRole): String {
         return JWT.create()
             .withSubject(userId)
             .withIssuer(jwtIssuer)
             .withAudience(jwtAudience)
             .withClaim("username", username)
+            .withClaim("legitId", legitId)
             .withClaim("role", role.name)
             .withClaim("type", "access")
             .withIssuedAt(Date())
