@@ -53,3 +53,6 @@ Thumbs.db
 mongo-data/
 
 service_provider_creds.json
+
+contracts/node_modules/
+/cache/
