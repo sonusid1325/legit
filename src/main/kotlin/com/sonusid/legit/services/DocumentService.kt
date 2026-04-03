@@ -6,6 +6,7 @@ import com.sonusid.legit.db.MongoDB
 import com.sonusid.legit.models.*
 import kotlinx.coroutines.flow.toList
 import org.bson.types.ObjectId
+import org.slf4j.LoggerFactory
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.*
@@ -19,6 +20,7 @@ class DocumentService(
     private val encryptionSecret: String
 ) {
 
+    private val logger = LoggerFactory.getLogger(DocumentService::class.java)
     private val secureRandom = SecureRandom()
 
     companion object {
@@ -86,6 +88,14 @@ class DocumentService(
                     message = "Failed to store document"
                 )
             )
+
+        // Anchor document hash on Polygon blockchain
+        try {
+            BlockchainService.anchorDocument(dataHash)
+        } catch (e: Exception) {
+            // Non-fatal — document saved regardless
+            logger.warn("Document anchoring failed (non-fatal): ${e.message}")
+        }
 
         val savedDocument = getDocumentById(documentId)
             ?: return Result.failure(

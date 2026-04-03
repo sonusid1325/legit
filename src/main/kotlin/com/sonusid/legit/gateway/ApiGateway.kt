@@ -3,6 +3,7 @@ package com.sonusid.legit.gateway
 import com.sonusid.legit.db.MongoDB
 import com.sonusid.legit.models.ApiResponse
 import com.sonusid.legit.pipeline.DataPipelineService
+import com.sonusid.legit.services.BlockchainService
 import com.sonusid.legit.services.FirebaseService
 import com.sonusid.legit.routes.authRoutes
 import com.sonusid.legit.routes.documentRoutes
@@ -148,6 +149,15 @@ class ApiGateway(
                         message = if (FirebaseService.isInitialized()) "Firebase Admin SDK initialized" else "Firebase not initialized (check service_provider_creds.json)"
                     )
 
+                    val blockchainStatus = ServiceStatus(
+                        name = "Blockchain",
+                        status = if (BlockchainService.isInitialized()) "UP" else "SIMULATED",
+                        message = if (BlockchainService.isInitialized()) 
+                            "Blockchain connected and operational" 
+                        else 
+                            "Audit logging in simulation mode — configure blockchain.privateKey to enable"
+                    )
+
                     val allServicesUp = mongoStatus.status == "UP"
 
                     val health = HealthCheckResponse(
@@ -159,7 +169,8 @@ class ApiGateway(
                             "user_service" to userServiceStatus,
                             "document_service" to documentServiceStatus,
                             "pipeline_service" to pipelineServiceStatus,
-                            "firebase" to firebaseStatus
+                            "firebase" to firebaseStatus,
+                            "blockchain" to blockchainStatus
                         )
                     )
 

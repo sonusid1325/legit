@@ -7,6 +7,7 @@ import com.sonusid.legit.plugins.configureMonitoring
 import com.sonusid.legit.plugins.configureSecurity
 import com.sonusid.legit.plugins.configureSerialization
 import com.sonusid.legit.plugins.configureStatusPages
+import com.sonusid.legit.services.BlockchainService
 import com.sonusid.legit.services.DocumentService
 import com.sonusid.legit.services.FirebaseService
 import com.sonusid.legit.services.UserService
@@ -25,6 +26,16 @@ fun Application.module() {
     // Initialize Admin SDK for push notifications
     // ========================
     FirebaseService.init()
+
+    // ========================
+    // 0.1. BLOCKCHAIN INITIALIZATION
+    // Initialize Polygon Amoy testnet for audit logging
+    // ========================
+    val blockchainRpc = environment.config.propertyOrNull("blockchain.rpcUrl")?.getString() ?: "https://rpc-amoy.polygon.technology"
+    val blockchainKey = environment.config.propertyOrNull("blockchain.privateKey")?.getString() ?: ""
+    val auditContract = environment.config.propertyOrNull("blockchain.auditLogContract")?.getString() ?: ""
+    val reputationContract = environment.config.propertyOrNull("blockchain.reputationContract")?.getString() ?: ""
+    BlockchainService.init(blockchainRpc, blockchainKey, auditContract, reputationContract)
 
     // ========================
     // 1. CORE PLUGINS
@@ -158,6 +169,8 @@ fun Application.module() {
     log.info("    ✓ DocumentService    — Encrypted Document Vault (AES-256-GCM)")
     log.info("    ✓ DataPipeline       — Contractual Verification with Disposable Keys")
     log.info("    ✓ API Gateway        — Route Aggregation & Health Monitoring")
+    log.info("    ${if (FirebaseService.isInitialized()) "✓" else "○"} Firebase          — Push Notifications ${if (FirebaseService.isInitialized()) "(LIVE)" else "(OFFLINE)"}")
+    log.info("    ${if (BlockchainService.isInitialized()) "✓" else "○"} BlockchainService   — Blockchain Audit Trail ${if (BlockchainService.isInitialized()) "(LIVE)" else "(SIMULATION)"}")
     log.info("  ")
     log.info("  Your documents never leave. Only verification does.")
     log.info("=".repeat(60))

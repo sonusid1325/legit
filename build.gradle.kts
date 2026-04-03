@@ -66,6 +66,9 @@ dependencies {
     // Firebase Admin SDK
     implementation("com.google.firebase:firebase-admin:9.4.3")
 
+    // Web3j for Polygon Amoy blockchain integration
+    implementation("org.web3j:core:4.10.3")
+
     // Ktor Client (for inter-service calls within gateway)
     implementation("io.ktor:ktor-client-core:$ktor_version")
     implementation("io.ktor:ktor-client-cio:$ktor_version")

@@ -6,6 +6,7 @@ import com.mongodb.client.model.Filters
 import com.mongodb.client.model.Updates
 import com.sonusid.legit.db.MongoDB
 import com.sonusid.legit.models.*
+import com.sonusid.legit.services.BlockchainService
 import com.sonusid.legit.services.DocumentService
 import com.sonusid.legit.services.FirebaseService
 import com.sonusid.legit.services.UserService
@@ -224,6 +225,18 @@ class DataPipelineService(
             // User rejected the contract
             updateContractStatus(request.contractId, ContractStatus.REJECTED)
             logger.info("Contract rejected: {} | User: {}", request.contractId, userId)
+            
+            // Blockchain: Update reputation for user rejection
+            try {
+                BlockchainService.updateReputation(
+                    verifierAddress = contract.requesterId,
+                    success = false,
+                    userRejected = true
+                )
+            } catch (e: Exception) {
+                logger.warn("Blockchain reputation update failed (non-fatal): ${e.message}")
+            }
+            
             return Result.success(
                 ApiResponse.ok("Verification contract rejected")
             )
@@ -265,6 +278,22 @@ class DataPipelineService(
                 Updates.set("updatedAt", System.currentTimeMillis())
             )
         )
+
+        // Blockchain audit — additive, non-blocking
+        try {
+            BlockchainService.logVerification(
+                contractId = request.contractId,
+                overallStatus = verificationResult.overallStatus.name,
+                passed = verificationResult.overallStatus == OverallVerificationStatus.PASS
+            )
+            BlockchainService.updateReputation(
+                verifierAddress = updatedContractBeforePipe.requesterId,
+                success = verificationResult.overallStatus == OverallVerificationStatus.PASS,
+                userRejected = false
+            )
+        } catch (e: Exception) {
+            logger.warn("Blockchain logging failed (non-fatal): ${e.message}")
+        }
 
         val finalContract = getContractById(request.contractId)!!
         val metadata = documentService.getDocumentMetadata(
@@ -376,6 +405,22 @@ class DataPipelineService(
                 Updates.set("updatedAt", System.currentTimeMillis())
             )
         )
+
+        // Blockchain audit — additive, non-blocking
+        try {
+            BlockchainService.logVerification(
+                contractId = request.contractId,
+                overallStatus = verificationResult.overallStatus.name,
+                passed = verificationResult.overallStatus == OverallVerificationStatus.PASS
+            )
+            BlockchainService.updateReputation(
+                verifierAddress = contract.requesterId,
+                success = verificationResult.overallStatus == OverallVerificationStatus.PASS,
+                userRejected = false
+            )
+        } catch (e: Exception) {
+            logger.warn("Blockchain logging failed (non-fatal): ${e.message}")
+        }
 
         logger.info(
             "Verification completed for contract: {} | Overall: {}",
@@ -867,6 +912,13 @@ class DataPipelineService(
                 Updates.set("updatedAt", System.currentTimeMillis())
             )
         )
+        
+        // Blockchain: Log key burn event
+        try {
+            BlockchainService.logKeyBurn(contractId)
+        } catch (e: Exception) {
+            // truly non-fatal
+        }
     }
 
     private suspend fun updateContractStatus(contractId: String, status: ContractStatus) {

@@ -6,35 +6,25 @@ ktor:
     port: 8080
     host: 0.0.0.0
 
-# ========================
-# JWT Configuration
-# ========================
-jwt:
-  secret: "legit-super-secret-key-change-this-in-production-minimum-256-bits"
-  issuer: "legit-platform"
-  audience: "legit-users"
-  realm: "legit"
-  expirationMs: "3600000"
-  refreshExpirationMs: "604800000"
-
-# ========================
-# MongoDB Configuration
-# ========================
-mongodb:
-  uri: "mongodb://localhost:27017"
-  database: "legit"
-
-# ========================
-# Legit Platform Configuration
-# ========================
-legit:
-  # AES-256-GCM encryption key for document vault
-  # CHANGE THIS IN PRODUCTION — must be a strong, unique secret
-  encryptionSecret: "legit-document-encryption-secret-change-in-production-64chars-min"
-
-  # Secret used for hashing disposable keys and generating proof hashes
-  # CHANGE THIS IN PRODUCTION — must be a strong, unique secret
-  pipelineSecret: "legit-pipeline-verification-secret-change-in-production"
-
-  # Time-to-live for disposable keys in milliseconds (default: 15 minutes)
-  disposableKeyTtlMs: "900000"
+  # For Polygon Edge (local private blockchain):
+  rpcUrl: "http://localhost:8545"
+  
+  # For Polygon Amoy testnet (public):
+  # rpcUrl: "https://rpc-amoy.polygon.technology"
+  
+  # For Polygon mainnet (production):
+  # rpcUrl: "https://polygon-rpc.com"
+  
+  # Wallet private key (64 hex chars, no 0x prefix)
+  # Get from: cat data-dir1/consensus/validator.key (for Polygon Edge)
+  # Leave EMPTY for SIMULATION mode (no blockchain transactions)
+  privateKey: ""
+  
+  # Smart contract addresses (fill after deployment)
+  auditLogContract: ""
+  reputationContract: ""
+blockchain:
+  rpcUrl: "http://localhost:8545"
+  privateKey: "4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d"
+  auditLogContract: "0xe78A0F7E598Cc8b0Bb87894B0F60dD2a88d6a8Ab"
+  reputationContract: "0x5b1869D9A4C187F2EAa108f3062412ecf0526b24"

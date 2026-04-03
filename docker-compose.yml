@@ -1,24 +1,97 @@
+version: '3.8'
+
 services:
-  mongo:
-    image: mongo:8
-    container_name: legit-mongo
+  # MongoDB Database
+  mongodb:
+    image: mongo:7
+    container_name: legit-mongodb
     restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
-      - legit-mongo-data:/data/db
-      - legit-mongo-config:/data/configdb
+      - mongodb_data:/data/db
     environment:
-      - MONGO_INITDB_DATABASE=legit
+      MONGO_INITDB_DATABASE: legit
+    networks:
+      - legit-network
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/legit --quiet
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Ganache Blockchain with Auto-deployed Contracts
+  blockchain:
+    build:
+      context: .
+      dockerfile: Dockerfile.blockchain
+    container_name: legit-blockchain
+    restart: unless-stopped
+    ports:
+      - "8545:8545"
+    volumes:
+      - blockchain_data:/data
+      - ./contracts:/contracts:ro
+    networks:
+      - legit-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-X", "POST", "http://localhost:8545", "-H", "Content-Type: application/json", "-d", '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}']
+      interval: 10s
+      timeout: 3s
+      retries: 3
       start_period: 30s
 
+  # Legit Backend Application
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: legit-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      blockchain:
+        condition: service_healthy
+    environment:
+      # MongoDB
+      MONGODB_URI: mongodb://mongodb:27017
+      MONGODB_DATABASE: legit
+      
+      # JWT
+      JWT_SECRET: legit-super-secret-key-change-this-in-production-minimum-256-bits
+      JWT_ISSUER: legit-platform
+      JWT_AUDIENCE: legit-users
+      
+      # Blockchain - will be auto-configured from blockchain service
+      BLOCKCHAIN_RPC_URL: http://blockchain:8545
+      BLOCKCHAIN_PRIVATE_KEY: 0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d
+      
+      # Encryption
+      ENCRYPTION_SECRET: legit-document-encryption-secret-change-in-production-64chars-min
+      PIPELINE_SECRET: legit-pipeline-verification-secret-change-in-production
+    volumes:
+      - backend_logs:/app/logs
+      - blockchain_data:/blockchain-data:ro
+    networks:
+      - legit-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/gateway/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 volumes:
-  legit-mongo-data:
+  mongodb_data:
     driver: local
-  legit-mongo-config:
+  blockchain_data:
     driver: local
+  backend_logs:
+    driver: local
+
+networks:
+  legit-network:
+    driver: bridge
