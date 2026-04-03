@@ -51,3 +51,5 @@ Thumbs.db
 
 ### Docker data (local dev) ###
 mongo-data/
+
+service_provider_creds.json

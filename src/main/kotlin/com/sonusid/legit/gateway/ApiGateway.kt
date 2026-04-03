@@ -3,6 +3,7 @@ package com.sonusid.legit.gateway
 import com.sonusid.legit.db.MongoDB
 import com.sonusid.legit.models.ApiResponse
 import com.sonusid.legit.pipeline.DataPipelineService
+import com.sonusid.legit.services.FirebaseService
 import com.sonusid.legit.routes.authRoutes
 import com.sonusid.legit.routes.documentRoutes
 import com.sonusid.legit.routes.pipelineRoutes
@@ -141,6 +142,12 @@ class ApiGateway(
                         message = "Verification pipeline operational"
                     )
 
+                    val firebaseStatus = ServiceStatus(
+                        name = "Firebase",
+                        status = if (FirebaseService.isInitialized()) "UP" else "DOWN",
+                        message = if (FirebaseService.isInitialized()) "Firebase Admin SDK initialized" else "Firebase not initialized (check service_provider_creds.json)"
+                    )
+
                     val allServicesUp = mongoStatus.status == "UP"
 
                     val health = HealthCheckResponse(
@@ -151,7 +158,8 @@ class ApiGateway(
                             "mongodb" to mongoStatus,
                             "user_service" to userServiceStatus,
                             "document_service" to documentServiceStatus,
-                            "pipeline_service" to pipelineServiceStatus
+                            "pipeline_service" to pipelineServiceStatus,
+                            "firebase" to firebaseStatus
                         )
                     )
 

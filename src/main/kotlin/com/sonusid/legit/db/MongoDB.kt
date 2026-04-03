@@ -83,6 +83,10 @@ object MongoDB {
             Indexes.ascending("username"),
             IndexOptions().unique(true)
         )
+        users.createIndex(
+            Indexes.ascending("legitId"),
+            IndexOptions().unique(true)
+        )
         users.createIndex(Indexes.ascending("phoneNumber"))
 
         // Document indexes

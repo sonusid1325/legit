@@ -63,6 +63,9 @@ dependencies {
     // UUID generation
     implementation("com.benasher44:uuid:0.8.4")
 
+    // Firebase Admin SDK
+    implementation("com.google.firebase:firebase-admin:9.4.3")
+
     // Ktor Client (for inter-service calls within gateway)
     implementation("io.ktor:ktor-client-core:$ktor_version")
     implementation("io.ktor:ktor-client-cio:$ktor_version")

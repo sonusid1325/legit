@@ -11,12 +11,14 @@ data class User(
     @Contextual
     val id: ObjectId? = null,
     val username: String,
+    val legitId: String = "", // Default empty for serialization compatibility
     val email: String,
     val passwordHash: String,
     val fullName: String,
     val phoneNumber: String? = null,
     val isVerified: Boolean = false,
     val role: UserRole = UserRole.USER,
+    val fcmToken: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -49,6 +51,7 @@ data class AuthResponse(
     val refreshToken: String,
     val userId: String,
     val username: String,
+    val legitId: String,
     val role: UserRole,
     val expiresIn: Long
 )
@@ -57,30 +60,41 @@ data class AuthResponse(
 data class UserSession(
     val userId: String,
     val username: String,
+    val legitId: String,
     val role: UserRole,
     val sessionId: String,
     val createdAt: Long = System.currentTimeMillis()
 )
 
 @Serializable
+data class RegisterFcmTokenRequest(
+    val fcmToken: String,
+    val deviceType: String = "ANDROID"
+)
+
+@Serializable
 data class UserProfileResponse(
     val id: String,
     val username: String,
+    val legitId: String,
     val email: String,
     val fullName: String,
     val phoneNumber: String?,
     val isVerified: Boolean,
     val role: UserRole,
+    val fcmToken: String? = null,
     val createdAt: Long
 )
 
 fun User.toProfileResponse(): UserProfileResponse = UserProfileResponse(
     id = id?.toHexString() ?: "",
     username = username,
+    legitId = if (legitId.isBlank()) "$username.legacy@legit" else legitId,
     email = email,
     fullName = fullName,
     phoneNumber = phoneNumber,
     isVerified = isVerified,
     role = role,
+    fcmToken = fcmToken,
     createdAt = createdAt
 )

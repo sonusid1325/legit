@@ -8,6 +8,7 @@ import com.sonusid.legit.plugins.configureSecurity
 import com.sonusid.legit.plugins.configureSerialization
 import com.sonusid.legit.plugins.configureStatusPages
 import com.sonusid.legit.services.DocumentService
+import com.sonusid.legit.services.FirebaseService
 import com.sonusid.legit.services.UserService
 import io.ktor.http.*
 import io.ktor.server.application.*
@@ -19,6 +20,12 @@ fun main(args: Array<String>) {
 }
 
 fun Application.module() {
+    // ========================
+    // 0. FIREBASE INITIALIZATION
+    // Initialize Admin SDK for push notifications
+    // ========================
+    FirebaseService.init()
+
     // ========================
     // 1. CORE PLUGINS
     // Order matters — serialization and status pages first,

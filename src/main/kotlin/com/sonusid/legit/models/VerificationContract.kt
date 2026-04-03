@@ -147,6 +147,7 @@ data class VerificationResponse(
     val contractId: String,
     val requesterName: String,
     val userId: String?,
+    val targetLegitId: String? = null,
     val purpose: String,
     val requiredDocumentTypes: List<DocumentType>,
     val requiredFields: List<VerificationField>,
@@ -163,6 +164,7 @@ data class VerificationResponse(
 data class ContractSummary(
     val contractId: String,
     val requesterName: String,
+    val targetLegitId: String? = null,
     val purpose: String,
     val requiredDocumentTypes: List<DocumentType>,
     val requiredFields: List<VerificationField>,
@@ -191,10 +193,14 @@ data class DisposableKeyResponse(
 // CONVERSION HELPERS
 // ========================
 
-fun VerificationContract.toResponse(metadata: DocumentMetadata? = null): VerificationResponse = VerificationResponse(
+fun VerificationContract.toResponse(
+    metadata: DocumentMetadata? = null,
+    targetLegitId: String? = null
+): VerificationResponse = VerificationResponse(
     contractId = id?.toHexString() ?: "",
     requesterName = requesterName,
     userId = userId,
+    targetLegitId = targetLegitId,
     purpose = purpose,
     requiredDocumentTypes = requiredDocumentTypes,
     requiredFields = requiredFields,
@@ -206,9 +212,10 @@ fun VerificationContract.toResponse(metadata: DocumentMetadata? = null): Verific
     metadata = metadata
 )
 
-fun VerificationContract.toSummary(): ContractSummary = ContractSummary(
+fun VerificationContract.toSummary(targetLegitId: String? = null): ContractSummary = ContractSummary(
     contractId = id?.toHexString() ?: "",
     requesterName = requesterName,
+    targetLegitId = targetLegitId,
     purpose = purpose,
     requiredDocumentTypes = requiredDocumentTypes,
     requiredFields = requiredFields,

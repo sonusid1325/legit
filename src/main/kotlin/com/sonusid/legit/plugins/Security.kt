@@ -40,10 +40,11 @@ fun Application.configureSecurity() {
             validate { credential ->
                 val userId = credential.payload.subject
                 val username = credential.payload.getClaim("username")?.asString()
+                val legitId = credential.payload.getClaim("legitId")?.asString()
                 val role = credential.payload.getClaim("role")?.asString()
                 val type = credential.payload.getClaim("type")?.asString()
 
-                if (userId != null && username != null && role != null && type == "access") {
+                if (userId != null && username != null && legitId != null && role != null && type == "access") {
                     JWTPrincipal(credential.payload)
                 } else {
                     null
@@ -68,10 +69,13 @@ fun Application.configureSecurity() {
                     .build()
             )
             validate { credential ->
+                val userId = credential.payload.subject
+                val username = credential.payload.getClaim("username")?.asString()
+                val legitId = credential.payload.getClaim("legitId")?.asString()
                 val role = credential.payload.getClaim("role")?.asString()
                 val type = credential.payload.getClaim("type")?.asString()
 
-                if (type == "access" && (role == UserRole.SERVICE_PROVIDER.name || role == UserRole.ADMIN.name)) {
+                if (userId != null && username != null && legitId != null && type == "access" && (role == UserRole.SERVICE_PROVIDER.name || role == UserRole.ADMIN.name || role == UserRole.USER.name)) {
                     JWTPrincipal(credential.payload)
                 } else {
                     null
@@ -96,10 +100,13 @@ fun Application.configureSecurity() {
                     .build()
             )
             validate { credential ->
+                val userId = credential.payload.subject
+                val username = credential.payload.getClaim("username")?.asString()
+                val legitId = credential.payload.getClaim("legitId")?.asString()
                 val role = credential.payload.getClaim("role")?.asString()
                 val type = credential.payload.getClaim("type")?.asString()
 
-                if (type == "access" && role == UserRole.ADMIN.name) {
+                if (userId != null && username != null && legitId != null && type == "access" && role == UserRole.ADMIN.name) {
                     JWTPrincipal(credential.payload)
                 } else {
                     null
@@ -140,4 +147,5 @@ fun Application.configureSecurity() {
 
 fun JWTPrincipal.getUserId(): String = payload.subject
 fun JWTPrincipal.getUsername(): String = payload.getClaim("username").asString()
+fun JWTPrincipal.getLegitId(): String = payload.getClaim("legitId").asString()
 fun JWTPrincipal.getRole(): UserRole = UserRole.valueOf(payload.getClaim("role").asString())

@@ -78,6 +78,7 @@ fun Application.configureStatusPages() {
 
         // Not found exceptions
         exception<NotFoundException> { call, cause ->
+            logger.warn("NotFoundException: {} - {}", cause.code, cause.message)
             call.respond(
                 HttpStatusCode.NotFound,
                 ApiError(
