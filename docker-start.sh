@@ -61,7 +61,7 @@ echo "🔗 Access Points:"
 echo "   Backend API:    http://localhost:8080"
 echo "   Health Check:   http://localhost:8080/api/v1/gateway/health"
 echo "   Blockchain RPC: http://localhost:8545"
-echo "   MongoDB:        localhost:27017"
+echo "   MongoDB:        localhost:${MONGODB_HOST_PORT:-27018}"
 echo ""
 echo "📊 View Logs:"
 echo "   docker-compose logs -f"
@@ -94,4 +94,3 @@ fi
 echo ""
 echo "🎉 Your Legit KYC platform is running with blockchain integration!"
 echo ""
-

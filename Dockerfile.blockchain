@@ -1,5 +1,5 @@
 # Dockerfile for Blockchain Service with Ganache + Auto-deployed Contracts
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Install dependencies
 RUN apk add --no-cache bash curl jq
@@ -10,84 +10,19 @@ RUN npm install -g ganache solc@0.8.20
 # Create working directory
 WORKDIR /blockchain
 
-# Copy smart contracts
+# Copy package manifest first for better layer caching
+COPY contracts/package.json contracts/package-lock.json ./
+
+# Install dependencies for deployment
+RUN npm ci --legacy-peer-deps
+
+# Copy smart contracts and deployment script
 COPY contracts/LegitAuditLog.sol .
 COPY contracts/VerifierReputation.sol .
 COPY contracts/scripts/deploy-local.js .
-COPY contracts/package.json .
 
-# Install dependencies for deployment
-RUN npm install ethers solc
-
-# Create startup script
-RUN cat > /blockchain/start.sh << 'SCRIPT'
-#!/bin/bash
-set -e
-
-echo "🚀 Starting Ganache Blockchain..."
-echo "════════════════════════════════════════════════════════════"
-
-# Start Ganache in background
-ganache \
-  --chain.chainId 1337 \
-  --wallet.deterministic \
-  --server.host 0.0.0.0 \
-  --server.port 8545 \
-  --chain.vmErrorsOnRPCResponse true \
-  --wallet.totalAccounts 10 \
-  --wallet.defaultBalance 1000 \
-  > /var/log/ganache.log 2>&1 &
-
-GANACHE_PID=$!
-echo "✅ Ganache started (PID: $GANACHE_PID)"
-
-# Wait for Ganache to be ready
-echo "⏳ Waiting for blockchain to be ready..."
-for i in {1..30}; do
-  if curl -s -X POST http://localhost:8545 \
-      -H "Content-Type: application/json" \
-      -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' > /dev/null 2>&1; then
-    echo "✅ Blockchain is ready!"
-    break
-  fi
-  sleep 1
-done
-
-# Display account info
-echo ""
-echo "📋 Blockchain Configuration:"
-echo "════════════════════════════════════════════════════════════"
-curl -s -X POST http://localhost:8545 \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"eth_accounts","params":[],"id":1}' \
-  | jq -r '.result[] | "Account: \(.)"' | head -3
-
-echo ""
-echo "🚀 Deploying Smart Contracts..."
-echo "════════════════════════════════════════════════════════════"
-
-# Deploy contracts
-cd /blockchain
-node deploy-local.js
-
-# Save deployment info to volume
-if [ -f deployment.json ]; then
-  cp deployment.json /data/deployment.json
-  echo "✅ Deployment info saved to /data/deployment.json"
-fi
-
-echo ""
-echo "════════════════════════════════════════════════════════════"
-echo "✅ Blockchain Ready!"
-echo "════════════════════════════════════════════════════════════"
-echo "RPC Endpoint:     http://0.0.0.0:8545"
-echo "Chain ID:         1337"
-echo "Deployment Info:  /data/deployment.json"
-echo "════════════════════════════════════════════════════════════"
-echo ""
-echo "📊 Streaming blockchain logs..."
-tail -f /var/log/ganache.log
-SCRIPT
+# Copy startup script
+COPY blockchain-start.sh /blockchain/start.sh
 
 RUN chmod +x /blockchain/start.sh
 

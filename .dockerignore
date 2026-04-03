@@ -9,6 +9,7 @@ build/
 *.ipr
 *.iws
 .vscode/
+.codex
 
 # OS
 .DS_Store
@@ -21,6 +22,7 @@ logs/
 # Blockchain (copied separately)
 test-chain-*
 genesis.json
+polygon-edge
 polygon-edge.log
 
 # Temporary files
@@ -30,7 +32,9 @@ polygon-edge.log
 
 # Node modules
 node_modules/
+**/node_modules/
 
 # Deployment artifacts
 deployment.json
 deployed-addresses.json
+service_provider_creds.json

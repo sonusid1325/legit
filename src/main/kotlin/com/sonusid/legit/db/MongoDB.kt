@@ -10,6 +10,7 @@ import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import com.sonusid.legit.models.Document
 import com.sonusid.legit.models.User
 import com.sonusid.legit.models.VerificationContract
+import com.sonusid.legit.plugins.configOrEnv
 import io.ktor.server.application.*
 import kotlinx.coroutines.runBlocking
 import org.bson.codecs.configuration.CodecRegistries
@@ -32,13 +33,9 @@ object MongoDB {
         private set
 
     fun init(application: Application) {
-        val mongoUri = application.environment.config
-            .propertyOrNull("mongodb.uri")?.getString()
-            ?: "mongodb://localhost:27017"
+        val mongoUri = application.configOrEnv("mongodb.uri", "MONGODB_URI", "mongodb://localhost:27017")
 
-        val databaseName = application.environment.config
-            .propertyOrNull("mongodb.database")?.getString()
-            ?: "legit"
+        val databaseName = application.configOrEnv("mongodb.database", "MONGODB_DATABASE", "legit")
 
         val kotlinSerializerCodecProvider = KotlinSerializerCodecProvider()
 

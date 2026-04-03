@@ -7,7 +7,7 @@ services:
     container_name: legit-mongodb
     restart: unless-stopped
     ports:
-      - "27017:27017"
+      - "${MONGODB_HOST_PORT:-27018}:27017"
     volumes:
       - mongodb_data:/data/db
     environment:
@@ -72,9 +72,13 @@ services:
       # Encryption
       ENCRYPTION_SECRET: legit-document-encryption-secret-change-in-production-64chars-min
       PIPELINE_SECRET: legit-pipeline-verification-secret-change-in-production
+
+      # Firebase
+      FIREBASE_SERVICE_ACCOUNT: /app/service_provider_creds.json
     volumes:
       - backend_logs:/app/logs
       - blockchain_data:/blockchain-data:ro
+      - ./service_provider_creds.json:/app/service_provider_creds.json:ro
     networks:
       - legit-network
     healthcheck:

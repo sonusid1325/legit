@@ -1,23 +1,26 @@
 # Multi-stage Dockerfile for Legit Backend
-FROM gradle:8.5-jdk21 AS builder
+FROM gradle:9.3.0-jdk21 AS builder
 
 WORKDIR /app
 
 # Copy gradle files
-COPY build.gradle.kts settings.gradle.kts gradle.properties ./
+COPY build.gradle.kts settings.gradle.kts gradle.properties gradlew gradlew.bat ./
 COPY gradle ./gradle
 
+# Ensure gradlew has execute permission
+RUN chmod +x gradlew
+
 # Download dependencies (cached layer)
-RUN gradle dependencies --no-daemon || true
+RUN ./gradlew dependencies --no-daemon || true
 
 # Copy source code
 COPY src ./src
 
 # Build application
-RUN gradle shadowJar --no-daemon
+RUN ./gradlew shadowJar --no-daemon
 
 # Runtime stage
-FROM openjdk:21-jdk-slim
+FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 

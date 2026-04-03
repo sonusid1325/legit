@@ -3,6 +3,7 @@ package com.sonusid.legit
 import com.sonusid.legit.db.MongoDB
 import com.sonusid.legit.gateway.ApiGateway
 import com.sonusid.legit.pipeline.DataPipelineService
+import com.sonusid.legit.plugins.configOrEnv
 import com.sonusid.legit.plugins.configureMonitoring
 import com.sonusid.legit.plugins.configureSecurity
 import com.sonusid.legit.plugins.configureSerialization
@@ -31,10 +32,10 @@ fun Application.module() {
     // 0.1. BLOCKCHAIN INITIALIZATION
     // Initialize Polygon Amoy testnet for audit logging
     // ========================
-    val blockchainRpc = environment.config.propertyOrNull("blockchain.rpcUrl")?.getString() ?: "https://rpc-amoy.polygon.technology"
-    val blockchainKey = environment.config.propertyOrNull("blockchain.privateKey")?.getString() ?: ""
-    val auditContract = environment.config.propertyOrNull("blockchain.auditLogContract")?.getString() ?: ""
-    val reputationContract = environment.config.propertyOrNull("blockchain.reputationContract")?.getString() ?: ""
+    val blockchainRpc = configOrEnv("blockchain.rpcUrl", "BLOCKCHAIN_RPC_URL", "https://rpc-amoy.polygon.technology")
+    val blockchainKey = configOrEnv("blockchain.privateKey", "BLOCKCHAIN_PRIVATE_KEY", "")
+    val auditContract = configOrEnv("blockchain.auditLogContract", "BLOCKCHAIN_AUDIT_CONTRACT", "")
+    val reputationContract = configOrEnv("blockchain.reputationContract", "BLOCKCHAIN_REPUTATION_CONTRACT", "")
     BlockchainService.init(blockchainRpc, blockchainKey, auditContract, reputationContract)
 
     // ========================
@@ -58,36 +59,31 @@ fun Application.module() {
     // 3. READ CONFIGURATION
     // Pull secrets and config from application.yaml
     // ========================
-    val jwtSecret = environment.config
-        .propertyOrNull("jwt.secret")?.getString()
-        ?: "legit-super-secret-change-in-production"
+    val jwtSecret = configOrEnv("jwt.secret", "JWT_SECRET", "legit-super-secret-change-in-production")
 
-    val jwtIssuer = environment.config
-        .propertyOrNull("jwt.issuer")?.getString()
-        ?: "legit-platform"
+    val jwtIssuer = configOrEnv("jwt.issuer", "JWT_ISSUER", "legit-platform")
 
-    val jwtAudience = environment.config
-        .propertyOrNull("jwt.audience")?.getString()
-        ?: "legit-users"
+    val jwtAudience = configOrEnv("jwt.audience", "JWT_AUDIENCE", "legit-users")
 
-    val jwtExpirationMs = environment.config
-        .propertyOrNull("jwt.expirationMs")?.getString()?.toLongOrNull()
+    val jwtExpirationMs = configOrEnv("jwt.expirationMs", "JWT_EXPIRATION_MS", "3600000").toLongOrNull()
         ?: 3600000L // 1 hour
 
-    val refreshExpirationMs = environment.config
-        .propertyOrNull("jwt.refreshExpirationMs")?.getString()?.toLongOrNull()
+    val refreshExpirationMs = configOrEnv("jwt.refreshExpirationMs", "JWT_REFRESH_EXPIRATION_MS", "604800000").toLongOrNull()
         ?: 604800000L // 7 days
 
-    val encryptionSecret = environment.config
-        .propertyOrNull("legit.encryptionSecret")?.getString()
-        ?: "legit-encryption-key-change-in-production-must-be-long"
+    val encryptionSecret = configOrEnv(
+        "legit.encryptionSecret",
+        "ENCRYPTION_SECRET",
+        "legit-encryption-key-change-in-production-must-be-long"
+    )
 
-    val pipelineSecret = environment.config
-        .propertyOrNull("legit.pipelineSecret")?.getString()
-        ?: "legit-pipeline-secret-change-in-production"
+    val pipelineSecret = configOrEnv(
+        "legit.pipelineSecret",
+        "PIPELINE_SECRET",
+        "legit-pipeline-secret-change-in-production"
+    )
 
-    val disposableKeyTtlMs = environment.config
-        .propertyOrNull("legit.disposableKeyTtlMs")?.getString()?.toLongOrNull()
+    val disposableKeyTtlMs = configOrEnv("legit.disposableKeyTtlMs", "DISPOSABLE_KEY_TTL_MS", "300000").toLongOrNull()
         ?: (5 * 60 * 1000L) // 5 minutes
 
     // ========================

@@ -159,14 +159,15 @@ docker volume rm legit-mongo-data
 #### Or Just Use Docker Compose (Recommended)
 
 ```bash
-# Start MongoDB with one command — volume, healthcheck, auto-restart all included
+# Start the full stack. MongoDB is published on localhost:27018 by default
+# to avoid collisions with an existing local MongoDB or a prior legit-mongo container.
 docker compose up -d
 
 # Check status
 docker compose ps
 
 # View logs
-docker compose logs -f mongo
+docker compose logs -f mongodb
 
 # Stop (data persists)
 docker compose down
@@ -482,7 +483,7 @@ All configuration lives in `src/main/resources/application.yaml`:
 | `jwt.audience` | `legit-users` | JWT audience |
 | `jwt.expirationMs` | `3600000` (1hr) | Access token TTL |
 | `jwt.refreshExpirationMs` | `604800000` (7d) | Refresh token TTL |
-| `mongodb.uri` | `mongodb://localhost:27017` | MongoDB connection URI |
+| `mongodb.uri` | `mongodb://localhost:27017` | Native/local-run default. In Docker Compose, MongoDB is published on `mongodb://localhost:27018` unless `MONGODB_HOST_PORT` is overridden. |
 | `mongodb.database` | `legit` | Database name |
 | `legit.encryptionSecret` | (change me) | AES-256 encryption key |
 | `legit.pipelineSecret` | (change me) | Pipeline proof secret |

@@ -11,10 +11,10 @@ import io.ktor.server.response.*
 import io.ktor.server.sessions.*
 
 fun Application.configureSecurity() {
-    val jwtSecret = environment.config.propertyOrNull("jwt.secret")?.getString() ?: "legit-super-secret-change-in-production"
-    val jwtIssuer = environment.config.propertyOrNull("jwt.issuer")?.getString() ?: "legit-platform"
-    val jwtAudience = environment.config.propertyOrNull("jwt.audience")?.getString() ?: "legit-users"
-    val jwtRealm = environment.config.propertyOrNull("jwt.realm")?.getString() ?: "legit"
+    val jwtSecret = configOrEnv("jwt.secret", "JWT_SECRET", "legit-super-secret-change-in-production")
+    val jwtIssuer = configOrEnv("jwt.issuer", "JWT_ISSUER", "legit-platform")
+    val jwtAudience = configOrEnv("jwt.audience", "JWT_AUDIENCE", "legit-users")
+    val jwtRealm = configOrEnv("jwt.realm", "JWT_REALM", "legit")
 
     install(Sessions) {
         cookie<UserSession>("LEGIT_SESSION") {

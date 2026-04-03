@@ -3,7 +3,7 @@
 ## Prerequisites
 - Polygon Edge installed and running
 - MongoDB running on localhost:27017
-- Java 25 and Gradle installed
+- Java 21 and Gradle installed
 
 ## Step-by-Step Setup (5 minutes)
 

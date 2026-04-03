@@ -1,20 +1,22 @@
 package com.sonusid.legit.services
 
 import org.slf4j.LoggerFactory
+import okhttp3.OkHttpClient
 import org.web3j.crypto.Credentials
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.http.HttpService
 import org.web3j.tx.RawTransactionManager
-import org.web3j.tx.gas.DefaultGasProvider
 import org.web3j.abi.FunctionEncoder
 import org.web3j.abi.datatypes.Function
 import org.web3j.abi.datatypes.generated.Bytes32
 import org.web3j.abi.datatypes.Bool
 import org.web3j.abi.datatypes.Utf8String
 import org.web3j.protocol.core.DefaultBlockParameterName
-import org.web3j.tx.gas.ContractGasProvider
 import java.math.BigInteger
 import java.security.MessageDigest
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * BlockchainService — Blockchain Integration
@@ -29,12 +31,17 @@ import java.security.MessageDigest
  */
 object BlockchainService {
     private val logger = LoggerFactory.getLogger(BlockchainService::class.java)
+    private const val GAS_LIMIT = 300000L
 
     private var web3j: Web3j? = null
     private var credentials: Credentials? = null
     private var auditLogAddress: String = ""
     private var reputationAddress: String = ""
+    private var chainId: Long = 0L
     private var initialized: Boolean = false
+    private val transactionExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "blockchain-tx-worker").apply { isDaemon = true }
+    }
 
     /**
      * Initialize the blockchain service with blockchain configuration.
@@ -51,12 +58,18 @@ object BlockchainService {
             if (privateKey.isBlank() || auditLogContract.isBlank() || reputationContract.isBlank()) {
                 logger.warn("Blockchain configuration incomplete — running in SIMULATION mode")
                 logger.info("To enable blockchain: set blockchain.privateKey, blockchain.auditLogContract, and blockchain.reputationContract in application.yaml")
-                initialized = false
+                disableLiveMode()
                 return
             }
 
             // Connect to blockchain via Web3j
-            web3j = Web3j.build(HttpService(rpcUrl))
+            val httpClient = OkHttpClient.Builder()
+                .connectTimeout(2, TimeUnit.SECONDS)
+                .readTimeout(3, TimeUnit.SECONDS)
+                .writeTimeout(3, TimeUnit.SECONDS)
+                .callTimeout(5, TimeUnit.SECONDS)
+                .build()
+            web3j = Web3j.build(HttpService(rpcUrl, httpClient))
 
             // Create credentials from private key
             val cleanPrivateKey = privateKey.removePrefix("0x")
@@ -67,7 +80,10 @@ object BlockchainService {
             reputationAddress = reputationContract
 
             // Test connection by fetching chain ID
-            val chainId = web3j?.ethChainId()?.send()?.chainId
+            chainId = web3j?.ethChainId()?.send()?.chainId?.toLong() ?: 0L
+            if (chainId <= 0L) {
+                throw IllegalStateException("Blockchain RPC returned an invalid chain ID")
+            }
             logger.info("Connected to blockchain. Chain ID: {}, Wallet: {}", chainId, credentials?.address)
 
             initialized = true
@@ -75,9 +91,7 @@ object BlockchainService {
 
         } catch (e: Exception) {
             logger.warn("Failed to initialize BlockchainService: ${e.message}. Running in SIMULATION mode.", e)
-            initialized = false
-            web3j = null
-            credentials = null
+            disableLiveMode()
         }
     }
 
@@ -102,7 +116,7 @@ object BlockchainService {
             return
         }
 
-        try {
+        submitTransaction("logVerification") {
             val contractHash = sha256ToBytes32(contractId)
 
             val function = Function(
@@ -117,9 +131,6 @@ object BlockchainService {
 
             sendTransaction(auditLogAddress, function)
             logger.info("Blockchain: logVerification sent for contract $contractId (passed=$passed)")
-
-        } catch (e: Exception) {
-            logger.warn("Blockchain logVerification failed (non-fatal): ${e.message}")
         }
     }
 
@@ -135,7 +146,7 @@ object BlockchainService {
             return
         }
 
-        try {
+        submitTransaction("anchorDocument") {
             val hashBytes = hexToBytes32(dataHash)
 
             val function = Function(
@@ -146,9 +157,6 @@ object BlockchainService {
 
             sendTransaction(auditLogAddress, function)
             logger.info("Blockchain: Document anchored with hash $dataHash")
-
-        } catch (e: Exception) {
-            logger.warn("Blockchain anchorDocument failed (non-fatal): ${e.message}")
         }
     }
 
@@ -164,7 +172,7 @@ object BlockchainService {
             return
         }
 
-        try {
+        submitTransaction("logKeyBurn") {
             val contractHash = sha256ToBytes32(contractId)
 
             val function = Function(
@@ -175,9 +183,6 @@ object BlockchainService {
 
             sendTransaction(auditLogAddress, function)
             logger.info("Blockchain: Key burn logged for contract $contractId")
-
-        } catch (e: Exception) {
-            logger.warn("Blockchain logKeyBurn failed (non-fatal): ${e.message}")
         }
     }
 
@@ -195,7 +200,7 @@ object BlockchainService {
             return
         }
 
-        try {
+        submitTransaction("updateReputation") {
             val verifierIdHash = sha256ToBytes32(verifierAddress)
 
             val function = Function(
@@ -210,9 +215,6 @@ object BlockchainService {
 
             sendTransaction(reputationAddress, function)
             logger.info("Blockchain: Reputation updated for verifier $verifierAddress (success=$success, rejected=$userRejected)")
-
-        } catch (e: Exception) {
-            logger.warn("Blockchain updateReputation failed (non-fatal): ${e.message}")
         }
     }
 
@@ -226,6 +228,8 @@ object BlockchainService {
     private fun sendTransaction(contractAddress: String, function: Function) {
         val w3j = web3j ?: throw IllegalStateException("Web3j not initialized")
         val creds = credentials ?: throw IllegalStateException("Credentials not initialized")
+        val liveChainId = chainId.takeIf { it > 0L }
+            ?: throw IllegalStateException("Chain ID not initialized")
 
         val encodedFunction = FunctionEncoder.encode(function)
 
@@ -238,27 +242,36 @@ object BlockchainService {
             DefaultBlockParameterName.PENDING
         ).send().transactionCount
 
-        // Create raw transaction
-        val rawTransaction = org.web3j.protocol.core.methods.request.Transaction.createFunctionCallTransaction(
-            creds.address,
-            nonce,
-            gasPrice,
-            BigInteger.valueOf(300000), // Gas limit
-            contractAddress,
-            encodedFunction
-        )
-
         // Sign and send transaction
-        val transactionManager = RawTransactionManager(w3j, creds, 80002) // Polygon Amoy chain ID
+        val transactionManager = RawTransactionManager(w3j, creds, liveChainId)
         val ethSendTransaction = transactionManager.sendTransaction(
             gasPrice,
-            BigInteger.valueOf(300000),
+            BigInteger.valueOf(GAS_LIMIT),
             contractAddress,
             encodedFunction,
             BigInteger.ZERO
         )
 
         logger.debug("Transaction sent: ${ethSendTransaction.transactionHash}")
+    }
+
+    private fun submitTransaction(operation: String, block: () -> Unit) {
+        transactionExecutor.submit {
+            try {
+                block()
+            } catch (e: Exception) {
+                logger.warn("Blockchain $operation failed (non-fatal): ${e.message}")
+            }
+        }
+    }
+
+    private fun disableLiveMode() {
+        initialized = false
+        web3j = null
+        credentials = null
+        auditLogAddress = ""
+        reputationAddress = ""
+        chainId = 0L
     }
 
     /**
